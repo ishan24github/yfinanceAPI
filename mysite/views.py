@@ -6,6 +6,13 @@ import datetime
 from django.contrib import messages
 from django.http import JsonResponse
 
+
+from django.contrib.auth import authenticate, login , logout
+from django.contrib.auth.decorators import login_required
+from .forms import UserForm
+from .decorators import unauthenticated_user
+
+
 import random
 
 
@@ -21,10 +28,13 @@ import random
 
 tickers = ['AAPL','AMZN','MSFT','GOOGL','AMD','META','NFLX','IBM','NVDA','INTC']
 
+
+@login_required(login_url='login')
 def index(request):
     return redirect(reverse("stock",kwargs={'pk':random.choice(tickers)}))
 
 
+@login_required(login_url='login')
 def stock(request,pk):
     stock = yf.Ticker(pk)
     close = "{:.2f}".format(stock.history(period='1d').Close.values.tolist()[0])   
@@ -36,11 +46,13 @@ def stock(request,pk):
     return render(request,'stock.html',context) 
 
 
+@login_required(login_url='login')
 def search(request):
     query = request.GET.get("query")
     return redirect(reverse("stock", kwargs= {'pk':str(query)}))
 
 
+@login_required(login_url='login')
 def loadstock(request):
     #function to handle ajax request for the plot of price history
     pk = request.GET.get("ticker", None)
@@ -60,3 +72,40 @@ def loadstock(request):
     high = data.High.values.tolist()
     low = data.Low.values.tolist()
     return JsonResponse( {pk :{'index': index, 'close': close, 'open': open,'high': high, 'low': low}}, status = 200)
+
+
+@unauthenticated_user
+def loginPage(request):
+    if request.method == 'POST':
+        username  = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password= password)
+
+        if user == None:
+             messages.error(request, 'Login information incorrect')
+             return redirect('login')
+        login(request,user)
+        return redirect('index')
+    context = {}
+    return render(request, 'login.html', context)
+
+
+@login_required(login_url='login')
+def logoutUser(request):
+    logout(request)
+    return redirect('login')
+
+
+@unauthenticated_user
+def registerPage(request):
+    form = UserForm()
+    if request.method == 'POST':
+        form = UserForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            messages.success(request, 'Your account was created')
+            return redirect('login')
+        messages.error(request, 'Your password or user is invalid')
+        return redirect('register')
+    context = {'form' : form}
+    return render(request, 'register.html', context)
